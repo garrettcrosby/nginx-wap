@@ -1,0 +1,51 @@
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log;
+pid /run/nginx.pid;
+
+# Load dynamic modules. See /usr/share/doc/nginx/README.dynamic.
+include /usr/share/nginx/modules/*.conf;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log  /var/log/nginx/access.log  main;
+
+    sendfile            on;
+    tcp_nopush          on;
+    tcp_nodelay         on;
+    keepalive_timeout   65;
+    types_hash_max_size 4096;
+
+    include             /etc/nginx/mime.types;
+    default_type        application/octet-stream;
+
+    include /etc/nginx/conf.d/*.conf;
+
+    server_name  proxy.gospel.moose;
+    ssl_certificate "/etc/pki/certs/nginx/server.crt";
+    ssl_certificate_key "/etc/pki/certs/nginx/server.key";
+    ssl_session_cache shared:SSL:1m;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_timeout  10m;
+    ssl_ciphers AES128-SHA:AES256-SHA:RC4-SHA:DES-CBC3-SHA:RC4-MD5;
+    ssl_prefer_server_ciphers on;
+    proxy_ssl_session_reuse on;
+    proxy_ssl_server_name on;
+    proxy_ssl_verify off;
+
+    server {
+        listen 80;
+        location /health-check {
+	    access_log off;
+	    return 200;
+	    add_header Content-Type text/plain;
+	    }
+    }
+

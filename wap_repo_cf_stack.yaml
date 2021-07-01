@@ -1,0 +1,16 @@
+Resources:
+  wapRepo:
+    Type: 'AWS::ECR::Repository'
+    Properties:
+      EncryptionConfiguration:
+        EncryptionType: "AES256"
+      ImageScanningConfiguration:
+        ScanOnPush: false
+      ImageTagMutability: 'MUTABLE'
+      RepositoryName: 'nginx-wap'
+      Tags:
+        - Key: 'deployment'
+          Value: 'CF'
+        - Key: 'stack'
+          Value: 'wap'
+    DeletionPolicy: 'Retain'
