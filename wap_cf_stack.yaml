@@ -11,6 +11,10 @@ Parameters:
   AV2:
     Description: 'Second availability zone for WAP.'
     Type: String
+  NeededPorts:
+    Type: CommaDelimitedList
+    Description: 'The list of TCP ports needed for this proxy. Separate by comma.'
+    Default: '1443,1444,1445,1446'
   vpc:
     Description: 'The id of the vpc the WAP will be deployed to.'
     Type: String
@@ -20,18 +24,25 @@ Parameters:
   subnet2:
     Description: 'Id of the second subnet for the WAP and its LB.'
     Type: String
-    
+  needsServiceLinkedRole:
+    Description: 'Whether or not you want CF to make a service linked role for ECS.'
+    AllowedValues:
+    - true
+    - false
+    Type: String
+
+Conditions:
+  ecsSLR: !Equals
+  - !Ref needsServiceLinkedRole
+  - 'true'
+ 
 Resources:
-  #ecsServiceLinkedRole:
-  #  Type: 'AWS::IAM::ServiceLinkedRole'
-  #  Properties:
-  #    AWSServiceName: 'ecs.amazonaws.com'
-  #    Description: 'Role To allow ECS to create and manage cluster.'
-  #wapDHCPOtions:
-  #  Type: 'AWS::EC2::DHCPOptions'
-  #  Properties:
-  #    DomainNameServers:
-  #    - 'AmazonProvidedDNS'
+  ecsServiceLinkedRole:
+    Condition: ecsSLR
+    Type: 'AWS::IAM::ServiceLinkedRole'
+    Properties:
+      AWSServiceName: 'ecs.amazonaws.com'
+      Description: 'Role To allow ECS to create and manage cluster.'
   ecsTaskExecutionRole:
     Type: 'AWS::IAM::Role'
     Properties:
@@ -54,13 +65,13 @@ Resources:
         Value: 'CF'
       - Key: 'stack'
         Value: 'wap'
-    DeletionPolicy: 'Retain'
+    DeletionPolicy: 'Delete'
   wapLogs:
     Type: 'AWS::Logs::LogGroup'
     Properties:
       LogGroupName: '/ecs/wap'
       RetentionInDays: 30
-    DeletionPolicy: 'Retain'
+    DeletionPolicy: 'Delete'
   wapLoadBalancer:
     Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
     Properties:
@@ -76,7 +87,7 @@ Resources:
           Value: 'CF'
         - Key: 'stack'
           Value: 'wap'
-    DeletionPolicy: 'Retain'
+    DeletionPolicy: 'Delete'
   wapSG:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
@@ -92,37 +103,33 @@ Resources:
         ToPort: 443
         CidrIp: 0.0.0.0/0
       - IpProtocol: 'tcp'
-        FromPort: 444 
-        ToPort: 444
+        FromPort: !Select [0, !Ref NeededPorts] 
+        ToPort: !Select [0, !Ref NeededPorts]
         CidrIp: 0.0.0.0/0
       - IpProtocol: 'tcp'
-        FromPort: 555
-        ToPort: 555
+        FromPort: !Select [1, !Ref NeededPorts]
+        ToPort: !Select [1, !Ref NeededPorts]
         CidrIp: 0.0.0.0/0
       - IpProtocol: 'tcp'
-        FromPort: 1442
-        ToPort: 1442
+        FromPort: !Select [2, !Ref NeededPorts]
+        ToPort: !Select [2, !Ref NeededPorts]
         CidrIp: 0.0.0.0/0
       - IpProtocol: 'tcp'
-        FromPort: 1443
-        ToPort: 1443
+        FromPort: !Select [3, !Ref NeededPorts]
+        ToPort: !Select [3, !Ref NeededPorts]
         CidrIp: 0.0.0.0/0
-      - IpProtocol: 'tcp'
-        FromPort: 1444
-        ToPort: 1444
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: 'tcp'
-        FromPort: 1444
-        ToPort: 1444
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: 'tcp'
-        FromPort: 1445
-        ToPort: 1445
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: 'tcp'
-        FromPort: 1446
-        ToPort: 1446
-        CidrIp: 0.0.0.0/0
+      #- IpProtocol: 'tcp'
+      #  FromPort: !Select [4, !Ref NeededPorts]
+      #  ToPort: !Select [4, !Ref NeededPorts]
+      #  CidrIp: 0.0.0.0/0
+      #- IpProtocol: 'tcp'
+      #  FromPort: !Select [5, !Ref NeededPorts]
+      #  ToPort: !Select [5, !Ref NeededPorts]
+      #  CidrIp: 0.0.0.0/0
+      #- IpProtocol: 'tcp'
+      #  FromPort: !Select [6, !Ref NeededPorts]
+      #  ToPort: !Select [6, !Ref NeededPorts]
+      #  CidrIp: 0.0.0.0/0
       VpcId:
         Ref: 'vpc'
       Tags:
@@ -130,17 +137,10 @@ Resources:
           Value: 'CF'
         - Key: 'stack'
           Value: 'wap'
-    DeletionPolicy: 'Retain'
+    DeletionPolicy: 'Delete'
   wapTG:
     Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
     Properties:
-      #HealthCheckEnabled: true
-      #HealthCheckIntervalSeconds: 10
-      #HealthCheckPath: '/health-check'
-      #HealthCheckPort: '80'
-      #HealthCheckProtocol: 'HTTP'
-      #HealthCheckTimeoutSeconds: 3
-      #HealthyThresholdCount: 3
       Name: 'wap-TG'
       Port: '443'
       Protocol: 'TCP'
@@ -153,8 +153,8 @@ Resources:
         - Key: 'stack'
           Value: 'wap'
     DependsOn: wapLoadBalancer
-    DeletionPolicy: 'Retain'
-  wapListener1:
+    DeletionPolicy: 'Delete'
+  wapListenerHTTPS:
     Type: 'AWS::ElasticLoadBalancingV2::Listener'
     Properties:
       DefaultActions:
@@ -165,7 +165,31 @@ Resources:
       Protocol: 'TCP'
     DependsOn:
     - wapLoadBalancer
-    DeletionPolicy: 'Retain'
+    DeletionPolicy: 'Delete'
+  wapListener0:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref wapTG
+      LoadBalancerArn: !Ref wapLoadBalancer
+      Port: !Select [0, !Ref NeededPorts]
+      Protocol: 'TCP'
+    DependsOn:
+    - wapLoadBalancer
+    DeletionPolicy: 'Delete'
+  wapListener1:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref wapTG
+      LoadBalancerArn: !Ref wapLoadBalancer
+      Port: !Select [1, !Ref NeededPorts]
+      Protocol: 'TCP'
+    DependsOn:
+    - wapLoadBalancer
+    DeletionPolicy: 'Delete'
   wapListener2:
     Type: 'AWS::ElasticLoadBalancingV2::Listener'
     Properties:
@@ -173,11 +197,11 @@ Resources:
       - Type: forward
         TargetGroupArn: !Ref wapTG
       LoadBalancerArn: !Ref wapLoadBalancer
-      Port: 444
+      Port: !Select [2, !Ref NeededPorts]
       Protocol: 'TCP'
     DependsOn:
     - wapLoadBalancer
-    DeletionPolicy: 'Retain'
+    DeletionPolicy: 'Delete'
   wapListener3:
     Type: 'AWS::ElasticLoadBalancingV2::Listener'
     Properties:
@@ -185,71 +209,47 @@ Resources:
       - Type: forward
         TargetGroupArn: !Ref wapTG
       LoadBalancerArn: !Ref wapLoadBalancer
-      Port: 555
+      Port: !Select [3, !Ref NeededPorts]
       Protocol: 'TCP'
     DependsOn:
     - wapLoadBalancer
-    DeletionPolicy: 'Retain'
-  wapListener4:
-    Type: 'AWS::ElasticLoadBalancingV2::Listener'
-    Properties:
-      DefaultActions:
-      - Type: forward
-        TargetGroupArn: !Ref wapTG
-      LoadBalancerArn: !Ref wapLoadBalancer
-      Port: 1442
-      Protocol: 'TCP'
-    DependsOn:
-    - wapLoadBalancer
-    DeletionPolicy: 'Retain'
-  wapListener5:
-    Type: 'AWS::ElasticLoadBalancingV2::Listener'
-    Properties:
-      DefaultActions:
-      - Type: forward
-        TargetGroupArn: !Ref wapTG
-      LoadBalancerArn: !Ref wapLoadBalancer
-      Port: 1443
-      Protocol: 'TCP'
-    DependsOn:
-    - wapLoadBalancer
-    DeletionPolicy: 'Retain'
-  wapListener6:
-    Type: 'AWS::ElasticLoadBalancingV2::Listener'
-    Properties:
-      DefaultActions:
-      - Type: forward
-        TargetGroupArn: !Ref wapTG
-      LoadBalancerArn: !Ref wapLoadBalancer
-      Port: 1444
-      Protocol: 'TCP'
-    DependsOn:
-    - wapLoadBalancer
-    DeletionPolicy: 'Retain'
-  wapListener7:
-    Type: 'AWS::ElasticLoadBalancingV2::Listener'
-    Properties:
-      DefaultActions:
-      - Type: forward
-        TargetGroupArn: !Ref wapTG
-      LoadBalancerArn: !Ref wapLoadBalancer
-      Port: 1445
-      Protocol: 'TCP'
-    DependsOn:
-    - wapLoadBalancer
-    DeletionPolicy: 'Retain'
-  wapListener8:
-    Type: 'AWS::ElasticLoadBalancingV2::Listener'
-    Properties:
-      DefaultActions:
-      - Type: forward
-        TargetGroupArn: !Ref wapTG
-      LoadBalancerArn: !Ref wapLoadBalancer
-      Port: 1446
-      Protocol: 'TCP'
-    DependsOn:
-    - wapLoadBalancer
-    DeletionPolicy: 'Retain'
+    DeletionPolicy: 'Delete'
+  #wapListener4:
+  #  Type: 'AWS::ElasticLoadBalancingV2::Listener'
+  #  Properties:
+  #    DefaultActions:
+  #    - Type: forward
+  #      TargetGroupArn: !Ref wapTG
+  #    LoadBalancerArn: !Ref wapLoadBalancer
+  #    Port: !Select [4, !Ref NeededPorts]
+  #    Protocol: 'TCP'
+  #  DependsOn:
+  #  - wapLoadBalancer
+  #  DeletionPolicy: 'Delete'
+  #wapListener5:
+  #  Type: 'AWS::ElasticLoadBalancingV2::Listener'
+  #  Properties:
+  #    DefaultActions:
+  #    - Type: forward
+  #      TargetGroupArn: !Ref wapTG
+  #    LoadBalancerArn: !Ref wapLoadBalancer
+  #    Port: !Select [5, !Ref NeededPorts]
+  #    Protocol: 'TCP'
+  #  DependsOn:
+  #  - wapLoadBalancer
+  #  DeletionPolicy: 'Delete'
+  #wapListener6:
+  #  Type: 'AWS::ElasticLoadBalancingV2::Listener'
+  #  Properties:
+  #    DefaultActions:
+  #    - Type: forward
+  #      TargetGroupArn: !Ref wapTG
+  #    LoadBalancerArn: !Ref wapLoadBalancer
+  #    Port: !Select [6, !Ref NeededPorts]
+  #    Protocol: 'TCP'
+  #  DependsOn:
+  #  - wapLoadBalancer
+  #  DeletionPolicy: 'Delete'
   wapCluster:
     Type: 'AWS::ECS::Cluster'
     Properties:
@@ -265,7 +265,7 @@ Resources:
           Value: 'CF'
         - Key: 'stack'
           Value: 'wap'
-    DeletionPolicy: 'Retain'
+    DeletionPolicy: 'Delete'
   wapTask:
     Type: 'AWS::ECS::TaskDefinition'
     Properties:
@@ -312,7 +312,7 @@ Resources:
     - wapLogs
     - wapCluster
     - ecsTaskExecutionRole
-    DeletionPolicy: 'Retain'
+    DeletionPolicy: 'Delete'
   wapService:
     Type: 'AWS::ECS::Service'
     Properties:
@@ -352,5 +352,5 @@ Resources:
     - wapLoadBalancer
     - wapSG
     - wapTG
-    DeletionPolicy: 'Retain'
+    DeletionPolicy: 'Delete'
     
