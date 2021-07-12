@@ -1,29 +1,6 @@
+Description: 'All resources needed to deploy NGINX WAP to AWS.'
+
 Parameters:
-  ImageUri:
-    Description: 'URI of docker image for nginx proxy.'
-    Type: String
-  DefaultRegion:
-    Description: 'Main region where resources in this project are.'
-    Type: String
-  AV1:
-    Description: 'First availability zone for the WAP to work. (this should match zones of subnets where this will be deployed)'
-    Type: String
-  AV2:
-    Description: 'Second availability zone for WAP.'
-    Type: String
-  NeededPorts:
-    Type: CommaDelimitedList
-    Description: 'The list of TCP ports needed for this proxy. Separate by comma.'
-    Default: '1443,1444,1445,1446'
-  vpc:
-    Description: 'The id of the vpc the WAP will be deployed to.'
-    Type: String
-  subnet1:
-    Description: 'Id of the subnet to deploy the WAP and its LB.'
-    Type: String
-  subnet2:
-    Description: 'Id of the second subnet for the WAP and its LB.'
-    Type: String
   needsServiceLinkedRole:
     Description: 'Whether or not you want CF to make a service linked role for ECS.'
     AllowedValues:
@@ -35,7 +12,7 @@ Conditions:
   ecsSLR: !Equals
   - !Ref needsServiceLinkedRole
   - 'true'
- 
+
 Resources:
   ecsServiceLinkedRole:
     Condition: ecsSLR
@@ -56,7 +33,7 @@ Resources:
           Action: sts:AssumeRole
       Description: 'Used for ecs task.'
       ManagedPolicyArns:
-      - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'      
+      - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
       MaxSessionDuration: 3600
       Path: '/'
       RoleName: 'ecsTaskExecutionRole'
@@ -65,13 +42,13 @@ Resources:
         Value: 'CF'
       - Key: 'stack'
         Value: 'wap'
-    DeletionPolicy: 'Delete'
+    DeletionPolicy: {{ DeletePolicy }}
   wapLogs:
     Type: 'AWS::Logs::LogGroup'
     Properties:
       LogGroupName: '/ecs/wap'
       RetentionInDays: 30
-    DeletionPolicy: 'Delete'
+    DeletionPolicy: {{ DeletePolicy }}
   wapLoadBalancer:
     Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
     Properties:
@@ -79,20 +56,21 @@ Resources:
       Name: 'wap-LoadBalancer'
       Scheme: 'internet-facing'
       Subnets:
-      - !Ref subnet1
-      - !Ref subnet2
-      Type: 'network'
+      - {{ Subnet1 }}
+      - {{ Subnet2 }}
+      Type: 'application'
       Tags:
         - Key: 'deployment'
           Value: 'CF'
         - Key: 'stack'
           Value: 'wap'
-    DeletionPolicy: 'Delete'
+    DeletionPolicy: {{ DeletePolicy }}
   wapSG:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
       GroupDescription: 'Necessary ports for wap.'
       GroupName: 'wap-sg'
+      #TEMPLATING HERE
       SecurityGroupIngress:
       - IpProtocol: 'tcp'
         FromPort: 80
@@ -102,58 +80,35 @@ Resources:
         FromPort: 443
         ToPort: 443
         CidrIp: 0.0.0.0/0
+      {% for port in NeededPorts %}
       - IpProtocol: 'tcp'
-        FromPort: !Select [0, !Ref NeededPorts] 
-        ToPort: !Select [0, !Ref NeededPorts]
+        FromPort: {{ port }}
+        ToPort: {{ port }}
         CidrIp: 0.0.0.0/0
-      - IpProtocol: 'tcp'
-        FromPort: !Select [1, !Ref NeededPorts]
-        ToPort: !Select [1, !Ref NeededPorts]
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: 'tcp'
-        FromPort: !Select [2, !Ref NeededPorts]
-        ToPort: !Select [2, !Ref NeededPorts]
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: 'tcp'
-        FromPort: !Select [3, !Ref NeededPorts]
-        ToPort: !Select [3, !Ref NeededPorts]
-        CidrIp: 0.0.0.0/0
-      #- IpProtocol: 'tcp'
-      #  FromPort: !Select [4, !Ref NeededPorts]
-      #  ToPort: !Select [4, !Ref NeededPorts]
-      #  CidrIp: 0.0.0.0/0
-      #- IpProtocol: 'tcp'
-      #  FromPort: !Select [5, !Ref NeededPorts]
-      #  ToPort: !Select [5, !Ref NeededPorts]
-      #  CidrIp: 0.0.0.0/0
-      #- IpProtocol: 'tcp'
-      #  FromPort: !Select [6, !Ref NeededPorts]
-      #  ToPort: !Select [6, !Ref NeededPorts]
-      #  CidrIp: 0.0.0.0/0
-      VpcId:
-        Ref: 'vpc'
+      {% endfor %}
+      VpcId: {{ Vpc }}
       Tags:
         - Key: 'deployment'
           Value: 'CF'
         - Key: 'stack'
           Value: 'wap'
-    DeletionPolicy: 'Delete'
+    DeletionPolicy: {{ DeletePolicy }}
   wapTG:
     Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
     Properties:
       Name: 'wap-TG'
       Port: '443'
-      Protocol: 'TCP'
+      Protocol: 'HTTPS'
       TargetType: 'ip'
       UnhealthyThresholdCount: 3
-      VpcId: !Ref vpc
+      VpcId: {{ Vpc }}
       Tags:
         - Key: 'deployment'
           Value: 'CF'
         - Key: 'stack'
           Value: 'wap'
     DependsOn: wapLoadBalancer
-    DeletionPolicy: 'Delete'
+    DeletionPolicy: {{ DeletePolicy }}
   wapListenerHTTPS:
     Type: 'AWS::ElasticLoadBalancingV2::Listener'
     Properties:
@@ -162,94 +117,30 @@ Resources:
         TargetGroupArn: !Ref wapTG
       LoadBalancerArn: !Ref wapLoadBalancer
       Port: 443
-      Protocol: 'TCP'
+      Protocol: 'HTTPS'
+      Certificates:
+      - CertificateArn: !Sub "arn:aws:iam::${AWS::AccountId}:server-certificate/wap_wildcard_cert"
     DependsOn:
     - wapLoadBalancer
-    DeletionPolicy: 'Delete'
-  wapListener0:
+    - wapTG
+    DeletionPolicy: {{ DeletePolicy }}
+{% for port in NeededPorts %}
+  wapListener{{ port }}:
     Type: 'AWS::ElasticLoadBalancingV2::Listener'
     Properties:
       DefaultActions:
       - Type: forward
         TargetGroupArn: !Ref wapTG
       LoadBalancerArn: !Ref wapLoadBalancer
-      Port: !Select [0, !Ref NeededPorts]
-      Protocol: 'TCP'
+      Port: {{ port }}
+      Protocol: 'HTTPS'
+      Certificates:
+      - CertificateArn: !Sub "arn:aws:iam::${AWS::AccountId}:server-certificate/wap_wildcard_cert"
     DependsOn:
     - wapLoadBalancer
-    DeletionPolicy: 'Delete'
-  wapListener1:
-    Type: 'AWS::ElasticLoadBalancingV2::Listener'
-    Properties:
-      DefaultActions:
-      - Type: forward
-        TargetGroupArn: !Ref wapTG
-      LoadBalancerArn: !Ref wapLoadBalancer
-      Port: !Select [1, !Ref NeededPorts]
-      Protocol: 'TCP'
-    DependsOn:
-    - wapLoadBalancer
-    DeletionPolicy: 'Delete'
-  wapListener2:
-    Type: 'AWS::ElasticLoadBalancingV2::Listener'
-    Properties:
-      DefaultActions:
-      - Type: forward
-        TargetGroupArn: !Ref wapTG
-      LoadBalancerArn: !Ref wapLoadBalancer
-      Port: !Select [2, !Ref NeededPorts]
-      Protocol: 'TCP'
-    DependsOn:
-    - wapLoadBalancer
-    DeletionPolicy: 'Delete'
-  wapListener3:
-    Type: 'AWS::ElasticLoadBalancingV2::Listener'
-    Properties:
-      DefaultActions:
-      - Type: forward
-        TargetGroupArn: !Ref wapTG
-      LoadBalancerArn: !Ref wapLoadBalancer
-      Port: !Select [3, !Ref NeededPorts]
-      Protocol: 'TCP'
-    DependsOn:
-    - wapLoadBalancer
-    DeletionPolicy: 'Delete'
-  #wapListener4:
-  #  Type: 'AWS::ElasticLoadBalancingV2::Listener'
-  #  Properties:
-  #    DefaultActions:
-  #    - Type: forward
-  #      TargetGroupArn: !Ref wapTG
-  #    LoadBalancerArn: !Ref wapLoadBalancer
-  #    Port: !Select [4, !Ref NeededPorts]
-  #    Protocol: 'TCP'
-  #  DependsOn:
-  #  - wapLoadBalancer
-  #  DeletionPolicy: 'Delete'
-  #wapListener5:
-  #  Type: 'AWS::ElasticLoadBalancingV2::Listener'
-  #  Properties:
-  #    DefaultActions:
-  #    - Type: forward
-  #      TargetGroupArn: !Ref wapTG
-  #    LoadBalancerArn: !Ref wapLoadBalancer
-  #    Port: !Select [5, !Ref NeededPorts]
-  #    Protocol: 'TCP'
-  #  DependsOn:
-  #  - wapLoadBalancer
-  #  DeletionPolicy: 'Delete'
-  #wapListener6:
-  #  Type: 'AWS::ElasticLoadBalancingV2::Listener'
-  #  Properties:
-  #    DefaultActions:
-  #    - Type: forward
-  #      TargetGroupArn: !Ref wapTG
-  #    LoadBalancerArn: !Ref wapLoadBalancer
-  #    Port: !Select [6, !Ref NeededPorts]
-  #    Protocol: 'TCP'
-  #  DependsOn:
-  #  - wapLoadBalancer
-  #  DeletionPolicy: 'Delete'
+    - wapTG
+    DeletionPolicy: {{ DeletePolicy }}
+{% endfor %}
   wapCluster:
     Type: 'AWS::ECS::Cluster'
     Properties:
@@ -265,7 +156,7 @@ Resources:
           Value: 'CF'
         - Key: 'stack'
           Value: 'wap'
-    DeletionPolicy: 'Delete'
+    DeletionPolicy: {{ DeletePolicy }}
   wapTask:
     Type: 'AWS::ECS::TaskDefinition'
     Properties:
@@ -273,7 +164,7 @@ Resources:
       - Cpu: 256
         Essential: true
         Name: 'nginx'
-        Image: !Ref ImageUri
+        Image: {{ Image }}
         MemoryReservation: 128
         PortMappings:
         - ContainerPort: 443
@@ -286,7 +177,7 @@ Resources:
           LogDriver: 'awslogs'
           Options:
             awslogs-group: '/ecs/wap'
-            awslogs-region: !Ref DefaultRegion
+            awslogs-region: {{ Region }}
             awslogs-stream-prefix: 'nginx-wap'
         HealthCheck:
           Command:
@@ -307,12 +198,12 @@ Resources:
         - Key: 'deployment'
           Value: 'CF'
         - Key: 'stack'
-          Value: 'wap'   
+          Value: 'wap'
     DependsOn:
     - wapLogs
     - wapCluster
     - ecsTaskExecutionRole
-    DeletionPolicy: 'Delete'
+    DeletionPolicy: {{ DeletePolicy }}
   wapService:
     Type: 'AWS::ECS::Service'
     Properties:
@@ -333,7 +224,8 @@ Resources:
       NetworkConfiguration:
         AwsvpcConfiguration:
           Subnets:
-          - !Ref subnet1
+          - {{ Subnet1 }}
+          - {{ Subnet2 }}
           SecurityGroups:
           - !Ref wapSG
           AssignPublicIp: ENABLED
@@ -345,12 +237,32 @@ Resources:
         - Key: 'deployment'
           Value: 'CF'
         - Key: 'stack'
-          Value: 'wap' 
+          Value: 'wap'
     DependsOn:
     - wapCluster
     - wapTask
     - wapLoadBalancer
     - wapSG
     - wapTG
-    DeletionPolicy: 'Delete'
-    
+    DeletionPolicy: {{ DeletePolicy }}
+  #wapAclUs:
+  #  Type: AWS::WAFv2::WebACL
+  #  Properties:
+  #    DefaultAction:
+  #      Action:
+  #        Block: {}
+  #    Description: 'Allow traffic from USA'
+  #    Name: 'DomesticTraffic'
+  #    Rules:
+  #    - Rule
+  #    Scope: 'REGIONAL'
+  #    VisibilityConfig:
+  #      CloudWatchMetricsEnabled: true
+  #      MetricName: 'domestic-hits'
+  #      SampleRequestsEnabled: false
+  #    Tags:
+  #      - Key: 'deployment'
+  #        Value: 'CF'
+  #      - Key: 'stack'
+  #        Value: 'wap'
+  #  DeletePolicy: {{ DeletePolicy }}

@@ -1,0 +1,35 @@
+---
+- hosts: localhost
+  gather_facts: no
+  connection: local
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  vars_files:
+  - values.yaml
+
+  tasks:
+  - name: Upload Cert
+    community.aws.iam_cert:
+      name: wap_wildcard_cert
+      state: present
+      cert: "{{ lookup('file', './certs/star_infotechfl_com.crt') }}"
+      key: "{{ lookup('file', './certs/star_infotechfl_com.key') }}"
+  
+  - name: Render CF Config
+    template:
+       src: ./templates/wap_cf_stack.yaml.j2
+       dest: wap_cf_stack.yaml
+       lstrip_blocks: yes
+
+  - name: Upload CF Template
+    amazon.aws.cloudformation:
+      capabilities:
+      - "CAPABILITY_NAMED_IAM" 
+      stack_name: "nginx-wap"
+      state: "present"
+      region: "{{ Region }}"
+      disable_rollback: no
+      template: "wap_cf_stack.yaml"
+      template_parameters:
+        needsServiceLinkedRole: "{{ needsServiceLinkedRole }}"
+
