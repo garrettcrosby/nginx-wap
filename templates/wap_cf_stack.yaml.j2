@@ -244,25 +244,50 @@ Resources:
     - wapLoadBalancer
     - wapSG
     - wapTG
+    - wapListenerHTTPS
+    {% for port in NeededPorts %}
+    - wapListener{{ port }}
+    {% endfor %}
     DeletionPolicy: {{ DeletePolicy }}
-  #wapAclUs:
-  #  Type: AWS::WAFv2::WebACL
-  #  Properties:
-  #    DefaultAction:
-  #      Action:
-  #        Block: {}
-  #    Description: 'Allow traffic from USA'
-  #    Name: 'DomesticTraffic'
-  #    Rules:
-  #    - Rule
-  #    Scope: 'REGIONAL'
-  #    VisibilityConfig:
-  #      CloudWatchMetricsEnabled: true
-  #      MetricName: 'domestic-hits'
-  #      SampleRequestsEnabled: false
-  #    Tags:
-  #      - Key: 'deployment'
-  #        Value: 'CF'
-  #      - Key: 'stack'
-  #        Value: 'wap'
-  #  DeletePolicy: {{ DeletePolicy }}
+  wapAclUs:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      DefaultAction:
+        Block: {}
+      Description: 'Allow traffic from USA only'
+      Name: 'DomesticTraffic'
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: 'wap-acl-metrics'  
+      Rules:
+      - Name: 'DomesticTrafficRule'
+        Priority: 0
+        Action:
+          Allow: {}
+        Statement:
+          GeoMatchStatement:
+            CountryCodes:
+            - US
+        VisibilityConfig:
+          SampledRequestsEnabled: true
+          CloudWatchMetricsEnabled: true
+          MetricName: 'DomesticTrafficMetrics'
+      Scope: 'REGIONAL'
+      Tags:
+        - Key: 'deployment'
+          Value: 'CF'
+        - Key: 'stack'
+          Value: 'wap'
+    DeletionPolicy: {{ DeletePolicy }}
+    DependsOn:
+    - wapLoadBalancer
+  wapAclAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties: 
+      ResourceArn: !Ref wapLoadBalancer
+      WebACLArn: !GetAtt wapAclUs.Arn
+    DeletionPolicy: {{ DeletePolicy }}
+    DependsOn:
+    - wapLoadBalancer
+    - wapAclUs

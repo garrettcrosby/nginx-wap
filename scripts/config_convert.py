@@ -30,11 +30,11 @@ def nginxConfig(external, backend):
     return serverBlock
 
 def write_config(new_config):
-    with open('nginx.conf.template', 'r') as f:
+    with open('../templates/nginx.conf.template', 'r') as f:
         nginxconf = f.readlines()
     for block in new_config:
         nginxconf.append(block)
-    with open('nginx.conf', 'w') as f:
+    with open('../nginx.conf', 'w') as f:
         f.writelines(nginxconf)
 
 def convert(config):

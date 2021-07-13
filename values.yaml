@@ -1,0 +1,29 @@
+# Whether this stacks resources should be deleted when the stack is.
+# can be Delete or Retain    
+DeletePolicy: Delete
+
+# The AWS region the resources will deploy to
+Region: us-east-2
+
+# The ID of the VPC to use. The ID, not the name
+Vpc: vpc-697f8e00
+
+# The id of the subnets to deploy to. Should be in different availability zones, and associated
+# with the vpc defined above.
+Subnet1: subnet-024a17d60f492bd69
+Subnet2: subnet-03b45e01a70c4c47b
+
+# The ports needed by this WAP. 
+NeededPorts:
+- 1442
+- 1443
+- 1444
+- 1445
+
+# URL of the container image
+Image: 573841903179.dkr.ecr.us-east-2.amazonaws.com/nginx-wap:latest
+
+# Whether or not we should creat a service linked role for ecs for this aws account. Can be true
+# to create the role or false to not. If unsure, look in iam for a role called AWSServiceRoleForECS.
+# If it exists set this var to false, otherwise true.
+needsServiceLinkedRole: "false"
