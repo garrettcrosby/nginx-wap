@@ -9,6 +9,8 @@
 
   tasks:
   - name: Upload Cert
+    tags:
+    - cert
     community.aws.iam_cert:
       name: wap_wildcard_cert
       state: present
@@ -16,12 +18,16 @@
       key: "{{ lookup('file', './certs/star_infotechfl_com.key') }}"
   
   - name: Render CF Config
+    tags:
+    - template
     template:
        src: ./templates/wap_cf_stack.yaml.j2
        dest: wap_cf_stack.yaml
        lstrip_blocks: yes
 
   - name: Upload CF Template
+    tags:
+    - deploy
     amazon.aws.cloudformation:
       capabilities:
       - "CAPABILITY_NAMED_IAM" 

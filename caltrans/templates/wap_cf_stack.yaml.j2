@@ -328,8 +328,6 @@ Resources:
     Properties:
       AcceleratorArn: !Ref wapAccelerator
       PortRanges:
-	    - FomPort: 443
-		  ToPort: 443
       {% for port in NeededPorts %}
         - FromPort: {{ port }}
           ToPort: {{ port }}
