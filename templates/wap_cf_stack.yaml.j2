@@ -228,6 +228,9 @@ Resources:
       Cluster: !Ref wapCluster
       ServiceName: 'wapService'
       DeploymentConfiguration:
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
         MaximumPercent: 200
         MinimumHealthyPercent: 50
       DesiredCount: 2
@@ -328,8 +331,8 @@ Resources:
     Properties:
       AcceleratorArn: !Ref wapAccelerator
       PortRanges:
-	    - FomPort: 443
-		  ToPort: 443
+        - FomPort: 443
+          ToPort: 443
       {% for port in NeededPorts %}
         - FromPort: {{ port }}
           ToPort: {{ port }}

@@ -14,8 +14,8 @@
     community.aws.iam_cert:
       name: wap_wildcard_cert
       state: present
-      cert: "{{ lookup('file', './certs/star_infotechfl_com.crt') }}"
-      key: "{{ lookup('file', './certs/star_infotechfl_com.key') }}"
+      cert: "{{ lookup('file', './certs/server.crt') }}"
+      key: "{{ lookup('file', './certs/server.key') }}"
   
   - name: Render CF Config
     tags:

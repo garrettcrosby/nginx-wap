@@ -1,0 +1,41 @@
+---
+- hosts: localhost
+  gather_facts: no
+  connection: local
+
+  vars_prompt:
+  - name: subdir
+    prompt: What would you like to name the working directory for your new environment?
+    private: no
+
+  tasks:
+  - name: create_evironment
+    file:
+      path: "{{ subdir }}"
+      state: directory
+
+  - name: copy_templates
+    copy:
+      src: templates/
+      dest: "{{ subdir }}/templates/"
+  - name: copy_certs   
+    copy:
+      src: certs/
+      dest: "{{ subdir }}/certs/"
+  - name: copy_scripts   
+    copy:
+      src: scripts/
+      dest: "{{ subdir }}/scripts/"
+
+  - name: copy_dockerfile
+    copy:
+      src: Dockerfile
+      dest: "{{ subdir }}/Dockerfile"
+  - name: copy_deploy
+    copy:
+      src: deploy.yaml
+      dest: "{{ subdir }}/deploy.yaml"
+  - name: copy_values
+    copy:
+      src: values.yaml
+      dest: "{{ subdir }}/values.yaml"
