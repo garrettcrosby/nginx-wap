@@ -7,10 +7,21 @@ Parameters:
     - true
     - false
     Type: String
+    
+  needsTaskExecutionRole:
+    Description: 'Whether or not you will need CF to make a task execution role for ECS.'
+    AllowedValues:
+    - true
+    - false
+    Type: String
 
 Conditions:
   ecsSLR: !Equals
   - !Ref needsServiceLinkedRole
+  - 'true'
+  
+  ecsTER: !Equals
+  - !Ref needsTaskExecutionRole
   - 'true'
 
 Resources:
@@ -21,6 +32,7 @@ Resources:
       AWSServiceName: 'ecs.amazonaws.com'
       Description: 'Role To allow ECS to create and manage cluster.'
   ecsTaskExecutionRole:
+    Condition: ecsTER
     Type: 'AWS::IAM::Role'
     Properties:
       AssumeRolePolicyDocument:
@@ -46,7 +58,7 @@ Resources:
   wapLogs:
     Type: 'AWS::Logs::LogGroup'
     Properties:
-      LogGroupName: '/ecs/wap'
+      LogGroupName: '/ecs/wap/{{ Environment }}'
       RetentionInDays: 30
     DeletionPolicy: {{ DeletePolicy }}
   wapLoadBalancer:
@@ -56,7 +68,7 @@ Resources:
       LoadBalancerAttributes:
       - Key: 'routing.http2.enabled' 
         Value: 'false'
-      Name: 'wap-LoadBalancer'
+      Name: 'wap-LoadBalancer-{{ Environment }}'
       Scheme: 'internet-facing'
       SecurityGroups:
       - !Ref wapSG
@@ -76,7 +88,7 @@ Resources:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
       GroupDescription: 'Necessary ports for wap.'
-      GroupName: 'wap-sg'
+      GroupName: 'wap-sg-{{ Environment }}'
       SecurityGroupIngress:
       - IpProtocol: 'tcp'
         FromPort: 8080
@@ -109,7 +121,7 @@ Resources:
       HealthCheckProtocol: 'HTTP'
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 2
-      Name: 'wap-TG'
+      Name: 'wap-TG-{{ Environment }}'
       Port: '443'
       Protocol: 'HTTPS'
       TargetType: 'ip'
@@ -157,7 +169,7 @@ Resources:
   wapCluster:
     Type: 'AWS::ECS::Cluster'
     Properties:
-      ClusterName: 'wap-cluster'
+      ClusterName: 'wap-cluster-{{ Environment }}'
       ClusterSettings:
       - Name: 'containerInsights'
         Value: 'enabled'
@@ -193,7 +205,7 @@ Resources:
         LogConfiguration:
           LogDriver: 'awslogs'
           Options:
-            awslogs-group: '/ecs/wap'
+            awslogs-group: '/ecs/wap/{{ Environment }}'
             awslogs-region: {{ Region }}
             awslogs-stream-prefix: 'nginx-wap'
         HealthCheck:
@@ -207,8 +219,13 @@ Resources:
       Cpu: '256'
       Memory: '512'
       NetworkMode: 'awsvpc'
+      {% if needsTaskExecutionRole == "true" %}
       ExecutionRoleArn: !Ref ecsTaskExecutionRole
       TaskRoleArn: !Ref ecsTaskExecutionRole
+      {% else %}
+      ExecutionRoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/ecsTaskExecutionRole
+      TaskRoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/ecsTaskExecutionRole
+      {% endif %}
       Family: 'wap'
       RequiresCompatibilities:
       - 'FARGATE'
@@ -220,13 +237,15 @@ Resources:
     DependsOn:
     - wapLogs
     - wapCluster
+    {% if needsTaskExecutionRole == "true" %}
     - ecsTaskExecutionRole
+    {% endif %}
     DeletionPolicy: {{ DeletePolicy }}
   wapService:
     Type: 'AWS::ECS::Service'
     Properties:
       Cluster: !Ref wapCluster
-      ServiceName: 'wapService'
+      ServiceName: 'wapService-{{ Environment }}'
       DeploymentConfiguration:
         DeploymentCircuitBreaker:
           Enable: true
@@ -251,7 +270,6 @@ Resources:
           - !Ref wapSG
           AssignPublicIp: ENABLED
       PlatformVersion: '1.4.0'
-      #Role: 'AWSServiceRoleForECS'
       SchedulingStrategy: 'REPLICA'
       TaskDefinition: !Ref wapTask
       Tags:
@@ -276,13 +294,13 @@ Resources:
       DefaultAction:
         Block: {}
       Description: 'Allow traffic from USA only'
-      Name: 'DomesticTraffic'
+      Name: 'DomesticTraffic-{{ Environment }}'
       VisibilityConfig:
         SampledRequestsEnabled: true
         CloudWatchMetricsEnabled: true
-        MetricName: 'wap-acl-metrics'  
+        MetricName: 'wap-acl-metrics-{{ Environment }}'  
       Rules:
-      - Name: 'DomesticTrafficRule'
+      - Name: 'DomesticTrafficRule-{{ Environment }}'
         Priority: 0
         Action:
           Allow: {}
@@ -293,7 +311,7 @@ Resources:
         VisibilityConfig:
           SampledRequestsEnabled: true
           CloudWatchMetricsEnabled: true
-          MetricName: 'DomesticTrafficMetrics'
+          MetricName: 'DomesticTrafficMetrics-{{ Environment }}'
       Scope: 'REGIONAL'
       Tags:
         - Key: 'deployment'
@@ -317,7 +335,7 @@ Resources:
     Properties:
       Enabled: true
       IpAddressType: 'IPV4'
-      Name: 'Wap-External-Static-IP'
+      Name: 'Wap-External-Static-IP-{{ Environment }}'
       Tags:
         - Key: 'deployment'
           Value: 'CF'
@@ -331,7 +349,7 @@ Resources:
     Properties:
       AcceleratorArn: !Ref wapAccelerator
       PortRanges:
-        - FomPort: 443
+        - FromPort: 443
           ToPort: 443
       {% for port in NeededPorts %}
         - FromPort: {{ port }}

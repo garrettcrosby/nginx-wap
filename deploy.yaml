@@ -38,4 +38,5 @@
       template: "wap_cf_stack.yaml"
       template_parameters:
         needsServiceLinkedRole: "{{ needsServiceLinkedRole }}"
+        needsTaskExecutionRole: "{{ needsTaskExecutionRole }}"
 

@@ -18,19 +18,20 @@ NeededPorts:
 - 1442
 - 1443
 - 1444
-- 1445
-
+- 1446
+- 1447
+- 444
+- 88
+- 3391
 # URL of the container image
-Image: 573841903179.dkr.ecr.us-east-2.amazonaws.com/nginx-wap:latest
+Image: 077808477023.dkr.ecr.us-west-2.amazonaws.com/nginx-wap-devtest:latest
 
-#what kind of deployment, either prod, dev, test, etc
-Environment: "test"
+#Either prod, dev, test, impl, etc
+Environment: "devtest"
 
 # Whether or not we should creat a service linked role for ecs for this aws account. Can be true
 # to create the role or false to not. If unsure, look in iam for a role called AWSServiceRoleForECS.
 # If it exists set this var to false, otherwise true.
 needsServiceLinkedRole: "false"
 
-#similar to above, except for task execution role. This will be true if this is the first deployment
-#if you have a test deployment already, and are deploying prod for instance, you can set to false.
-needsTaskExecutionRole: "true"
+needsTaskExecutionRole: "false"
