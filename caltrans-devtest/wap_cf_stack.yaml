@@ -1,0 +1,489 @@
+Description: 'All resources needed to deploy NGINX WAP to AWS.'
+
+Parameters:
+  needsServiceLinkedRole:
+    Description: 'Whether or not you want CF to make a service linked role for ECS.'
+    AllowedValues:
+    - true
+    - false
+    Type: String
+    
+  needsTaskExecutionRole:
+    Description: 'Whether or not you will need CF to make a task execution role for ECS.'
+    AllowedValues:
+    - true
+    - false
+    Type: String
+
+Conditions:
+  ecsSLR: !Equals
+  - !Ref needsServiceLinkedRole
+  - 'true'
+  
+  ecsTER: !Equals
+  - !Ref needsTaskExecutionRole
+  - 'true'
+
+Resources:
+  ecsServiceLinkedRole:
+    Condition: ecsSLR
+    Type: 'AWS::IAM::ServiceLinkedRole'
+    Properties:
+      AWSServiceName: 'ecs.amazonaws.com'
+      Description: 'Role To allow ECS to create and manage cluster.'
+  ecsTaskExecutionRole:
+    Condition: ecsTER
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2008-10-17'
+        Statement:
+        - Sid: ''
+          Effect: Allow
+          Principal:
+            Service: ecs-tasks.amazonaws.com
+          Action: sts:AssumeRole
+      Description: 'Used for ecs task.'
+      ManagedPolicyArns:
+      - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+      MaxSessionDuration: 3600
+      Path: '/'
+      RoleName: 'ecsTaskExecutionRole'
+      Tags:
+      - Key: 'deployment'
+        Value: 'CF'
+      - Key: 'stack'
+        Value: 'wap'
+    DeletionPolicy: Retain
+  wapLogs:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: '/ecs/wap/devtest'
+      RetentionInDays: 30
+    DeletionPolicy: Retain
+  wapLoadBalancer:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      IpAddressType: 'ipv4'
+      LoadBalancerAttributes:
+      - Key: 'routing.http2.enabled' 
+        Value: 'false'
+      Name: 'wap-LoadBalancer-devtest'
+      Scheme: 'internet-facing'
+      SecurityGroups:
+      - !Ref wapSG
+      Subnets:
+      - subnet-0ddfc2a6d626d910f
+      - subnet-0528d4ba2ae4ba272
+      Type: 'application'
+      Tags:
+        - Key: 'deployment'
+          Value: 'CF'
+        - Key: 'stack'
+          Value: 'wap'
+    DependsOn:
+    - wapSG
+    DeletionPolicy: Retain
+  wapSG:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'Necessary ports for wap.'
+      GroupName: 'wap-sg-devtest'
+      SecurityGroupIngress:
+      - IpProtocol: 'tcp'
+        FromPort: 8080
+        ToPort: 8080
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: 'tcp'
+        FromPort: 443
+        ToPort: 443
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: 'tcp'
+        FromPort: 1442
+        ToPort: 1442
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: 'tcp'
+        FromPort: 1443
+        ToPort: 1443
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: 'tcp'
+        FromPort: 1444
+        ToPort: 1444
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: 'tcp'
+        FromPort: 1446
+        ToPort: 1446
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: 'tcp'
+        FromPort: 1447
+        ToPort: 1447
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: 'tcp'
+        FromPort: 444
+        ToPort: 444
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: 'tcp'
+        FromPort: 88
+        ToPort: 88
+        CidrIp: 0.0.0.0/0
+      VpcId: vpc-099919f97e876cc5a
+      Tags:
+        - Key: 'deployment'
+          Value: 'CF'
+        - Key: 'stack'
+          Value: 'wap'
+    DeletionPolicy: Retain
+  wapTG:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 15
+      HealthCheckPath: '/health-check'
+      HealthCheckPort: '8080'
+      HealthCheckProtocol: 'HTTP'
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Name: 'wap-TG-devtest'
+      Port: '443'
+      Protocol: 'HTTPS'
+      TargetType: 'ip'
+      UnhealthyThresholdCount: 3
+      VpcId: vpc-099919f97e876cc5a
+      Tags:
+        - Key: 'deployment'
+          Value: 'CF'
+        - Key: 'stack'
+          Value: 'wap'
+    DependsOn: wapLoadBalancer
+    DeletionPolicy: Retain
+  wapListenerHTTPS:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref wapTG
+      LoadBalancerArn: !Ref wapLoadBalancer
+      Port: 443
+      Protocol: 'HTTPS'
+      Certificates:
+      - CertificateArn: !Sub "arn:aws:iam::${AWS::AccountId}:server-certificate/wap_wildcard_cert"
+    DependsOn:
+    - wapLoadBalancer
+    - wapTG
+    DeletionPolicy: Retain
+  wapListener1442:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref wapTG
+      LoadBalancerArn: !Ref wapLoadBalancer
+      Port: 1442
+      Protocol: 'HTTPS'
+      Certificates:
+      - CertificateArn: !Sub "arn:aws:iam::${AWS::AccountId}:server-certificate/wap_wildcard_cert"
+    DependsOn:
+    - wapLoadBalancer
+    - wapTG
+    DeletionPolicy: Retain
+  wapListener1443:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref wapTG
+      LoadBalancerArn: !Ref wapLoadBalancer
+      Port: 1443
+      Protocol: 'HTTPS'
+      Certificates:
+      - CertificateArn: !Sub "arn:aws:iam::${AWS::AccountId}:server-certificate/wap_wildcard_cert"
+    DependsOn:
+    - wapLoadBalancer
+    - wapTG
+    DeletionPolicy: Retain
+  wapListener1444:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref wapTG
+      LoadBalancerArn: !Ref wapLoadBalancer
+      Port: 1444
+      Protocol: 'HTTPS'
+      Certificates:
+      - CertificateArn: !Sub "arn:aws:iam::${AWS::AccountId}:server-certificate/wap_wildcard_cert"
+    DependsOn:
+    - wapLoadBalancer
+    - wapTG
+    DeletionPolicy: Retain
+  wapListener1446:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref wapTG
+      LoadBalancerArn: !Ref wapLoadBalancer
+      Port: 1446
+      Protocol: 'HTTPS'
+      Certificates:
+      - CertificateArn: !Sub "arn:aws:iam::${AWS::AccountId}:server-certificate/wap_wildcard_cert"
+    DependsOn:
+    - wapLoadBalancer
+    - wapTG
+    DeletionPolicy: Retain
+  wapListener1447:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref wapTG
+      LoadBalancerArn: !Ref wapLoadBalancer
+      Port: 1447
+      Protocol: 'HTTPS'
+      Certificates:
+      - CertificateArn: !Sub "arn:aws:iam::${AWS::AccountId}:server-certificate/wap_wildcard_cert"
+    DependsOn:
+    - wapLoadBalancer
+    - wapTG
+    DeletionPolicy: Retain
+  wapListener444:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref wapTG
+      LoadBalancerArn: !Ref wapLoadBalancer
+      Port: 444
+      Protocol: 'HTTPS'
+      Certificates:
+      - CertificateArn: !Sub "arn:aws:iam::${AWS::AccountId}:server-certificate/wap_wildcard_cert"
+    DependsOn:
+    - wapLoadBalancer
+    - wapTG
+    DeletionPolicy: Retain
+  wapListener88:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref wapTG
+      LoadBalancerArn: !Ref wapLoadBalancer
+      Port: 88
+      Protocol: 'HTTPS'
+      Certificates:
+      - CertificateArn: !Sub "arn:aws:iam::${AWS::AccountId}:server-certificate/wap_wildcard_cert"
+    DependsOn:
+    - wapLoadBalancer
+    - wapTG
+    DeletionPolicy: Retain
+  wapCluster:
+    Type: 'AWS::ECS::Cluster'
+    Properties:
+      ClusterName: 'wap-cluster-devtest'
+      ClusterSettings:
+      - Name: 'containerInsights'
+        Value: 'enabled'
+      CapacityProviders:
+      - 'FARGATE'
+      - 'FARGATE_SPOT'
+      Tags:
+        - Key: 'deployment'
+          Value: 'CF'
+        - Key: 'stack'
+          Value: 'wap'
+    DeletionPolicy: Retain
+  wapTask:
+    Type: 'AWS::ECS::TaskDefinition'
+    Properties:
+      ContainerDefinitions:
+      - Cpu: 256
+        Essential: true
+        Name: 'nginx'
+        Image: 077808477023.dkr.ecr.us-west-2.amazonaws.com/nginx-wap-devtest:latest
+        MemoryReservation: 128
+        PortMappings:
+        - ContainerPort: 443
+          HostPort: 443
+          Protocol: 'tcp'
+        StartTimeout: 30
+        StopTimeout: 30
+        WorkingDirectory: '/usr/local/'
+        LogConfiguration:
+          LogDriver: 'awslogs'
+          Options:
+            awslogs-group: '/ecs/wap/devtest'
+            awslogs-region: us-west-2
+            awslogs-stream-prefix: 'nginx-wap'
+        HealthCheck:
+          Command:
+          - "CMD-SHELL" 
+          - "curl http://localhost:8080/health-check || exit 1"
+          Interval: 10
+          Timeout: 3
+          Retries: 3
+          StartPeriod: 30
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: 'awsvpc'
+      ExecutionRoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/ecsTaskExecutionRole
+      TaskRoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/ecsTaskExecutionRole
+      Family: 'wap'
+      RequiresCompatibilities:
+      - 'FARGATE'
+      Tags:
+        - Key: 'deployment'
+          Value: 'CF'
+        - Key: 'stack'
+          Value: 'wap'
+    DependsOn:
+    - wapLogs
+    - wapCluster
+    DeletionPolicy: Retain
+  wapService:
+    Type: 'AWS::ECS::Service'
+    Properties:
+      Cluster: !Ref wapCluster
+      ServiceName: 'wapService-devtest'
+      DeploymentConfiguration:
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+      DesiredCount: 2
+      EnableECSManagedTags: true
+      EnableExecuteCommand: true
+      HealthCheckGracePeriodSeconds: 30
+      LaunchType: 'FARGATE'
+      LoadBalancers:
+      - TargetGroupArn: !Ref wapTG
+        ContainerName: 'nginx'
+        ContainerPort: '443'
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+          - subnet-0ddfc2a6d626d910f
+          - subnet-0528d4ba2ae4ba272
+          SecurityGroups:
+          - !Ref wapSG
+          AssignPublicIp: ENABLED
+      PlatformVersion: '1.4.0'
+      SchedulingStrategy: 'REPLICA'
+      TaskDefinition: !Ref wapTask
+      Tags:
+        - Key: 'deployment'
+          Value: 'CF'
+        - Key: 'stack'
+          Value: 'wap'
+    DependsOn:
+    - wapCluster
+    - wapTask
+    - wapLoadBalancer
+    - wapSG
+    - wapTG
+    - wapListenerHTTPS
+    - wapListener1442
+    - wapListener1443
+    - wapListener1444
+    - wapListener1446
+    - wapListener1447
+    - wapListener444
+    - wapListener88
+    DeletionPolicy: Retain
+  wapAclUs:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      DefaultAction:
+        Block: {}
+      Description: 'Allow traffic from USA only'
+      Name: 'DomesticTraffic-devtest'
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: 'wap-acl-metrics-devtest'  
+      Rules:
+      - Name: 'DomesticTrafficRule-devtest'
+        Priority: 0
+        Action:
+          Allow: {}
+        Statement:
+          GeoMatchStatement:
+            CountryCodes:
+            - US
+        VisibilityConfig:
+          SampledRequestsEnabled: true
+          CloudWatchMetricsEnabled: true
+          MetricName: 'DomesticTrafficMetrics-devtest'
+      Scope: 'REGIONAL'
+      Tags:
+        - Key: 'deployment'
+          Value: 'CF'
+        - Key: 'stack'
+          Value: 'wap'
+    DeletionPolicy: Retain
+    DependsOn:
+    - wapLoadBalancer
+  wapAclAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties: 
+      ResourceArn: !Ref wapLoadBalancer
+      WebACLArn: !GetAtt wapAclUs.Arn
+    DeletionPolicy: Retain
+    DependsOn:
+    - wapLoadBalancer
+    - wapAclUs
+  wapAccelerator:
+    Type: AWS::GlobalAccelerator::Accelerator
+    Properties:
+      Enabled: true
+      IpAddressType: 'IPV4'
+      Name: 'Wap-External-Static-IP-devtest'
+      Tags:
+        - Key: 'deployment'
+          Value: 'CF'
+        - Key: 'stack'
+          Value: 'wap'
+    DependsOn:
+    - wapLoadBalancer
+    DeletionPolicy: Retain
+  wapAcceleratorListener:
+    Type: AWS::GlobalAccelerator::Listener
+    Properties:
+      AcceleratorArn: !Ref wapAccelerator
+      PortRanges:
+        - FromPort: 443
+          ToPort: 443
+        - FromPort: 1442
+          ToPort: 1442
+        - FromPort: 1443
+          ToPort: 1443
+        - FromPort: 1444
+          ToPort: 1444
+        - FromPort: 1446
+          ToPort: 1446
+        - FromPort: 1447
+          ToPort: 1447
+        - FromPort: 444
+          ToPort: 444
+        - FromPort: 88
+          ToPort: 88
+      Protocol: 'TCP'
+    DependsOn:
+    - wapLoadBalancer
+    - wapAccelerator
+    DeletionPolicy: Retain
+  wapAcceleratorEndpoint:
+    Type: AWS::GlobalAccelerator::EndpointGroup
+    Properties:
+      EndpointConfigurations:
+      - ClientIPPreservationEnabled: true
+        EndpointId: !Ref wapLoadBalancer
+      EndpointGroupRegion: us-west-2
+      ListenerArn: !Ref wapAcceleratorListener
+    DependsOn:
+    - wapLoadBalancer
+    - wapAccelerator
+    - wapAcceleratorListener
+    DeletionPolicy: Retain
+    
+      

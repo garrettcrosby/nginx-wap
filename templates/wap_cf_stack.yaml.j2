@@ -192,7 +192,7 @@ Resources:
       ContainerDefinitions:
       - Cpu: 256
         Essential: true
-        Name: 'nginx'
+        Name: 'nginx-{{ Environment }}'
         Image: {{ Image }}
         MemoryReservation: 128
         PortMappings:
